@@ -1,0 +1,25 @@
+{
+  "name": "musafir",
+  "version": "2.0.0",
+  "description": "AI-powered travel planning platform with luxury editorial aesthetic",
+  "scripts": {
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "build": "cd client && npm run build"
+  },
+  "keywords": [
+    "travel",
+    "ai",
+    "planner",
+    "mern",
+    "openrouter",
+    "gemini"
+  ],
+  "author": "Musafir Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
