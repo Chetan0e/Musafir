@@ -72,8 +72,22 @@ app.use("/api/trips/generate", aiLimiter);
 app.use("/api/places/identify", aiLimiter);
 
 // CORS middleware
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://musafir-azure.vercel.app",
+  process.env.CLIENT_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
@@ -103,8 +117,8 @@ app.use(handleMulterError);
 
 // Health check
 app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
+  res.json({
+    status: "ok",
     message: "Musafir API is running",
     version: "2.0.0",
     timestamp: new Date().toISOString()
@@ -122,7 +136,7 @@ app.use((req, res) => {
 // Global error handling middleware
 app.use((err, req, res, next) => {
   console.error("Error:", err);
-  
+
   // Handle specific error types
   if (err.name === "ValidationError") {
     return res.status(400).json({
@@ -131,14 +145,14 @@ app.use((err, req, res, next) => {
       errors: Object.values(err.errors).map(e => e.message)
     });
   }
-  
+
   if (err.name === "CastError") {
     return res.status(400).json({
       success: false,
       message: "Invalid ID format"
     });
   }
-  
+
   if (err.code === 11000) {
     return res.status(400).json({
       success: false,
@@ -146,8 +160,8 @@ app.use((err, req, res, next) => {
     });
   }
 
-  res.status(err.status || 500).json({ 
-    success: false, 
+  res.status(err.status || 500).json({
+    success: false,
     message: err.message || "Something went wrong!",
     error: process.env.NODE_ENV === "development" ? err.stack : undefined
   });
