@@ -169,21 +169,27 @@ app.use((err, req, res, next) => {
 
 // Database connection
 const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) return;
   try {
-    await mongoose.connect(process.env.MONGO_URI || "mongodb://localhost:27017/musafir");
+    await mongoose.connect(process.env.MONGO_URI);
     console.log("✅ MongoDB Connected");
   } catch (err) {
-    console.error("❌ MongoDB connection error:", err);
-    process.exit(1);
+    console.error("❌ MongoDB connection error:", err.message);
   }
 };
 
-// Start server
-const PORT = process.env.PORT || 5000;
-
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📍 API URL: http://localhost:${PORT}/api`);
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 5000;
+  connectDB().then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
   });
-});
+}
+
+// Export the app for Vercel
+export default async (req, res) => {
+  await connectDB();
+  return app(req, res);
+};
