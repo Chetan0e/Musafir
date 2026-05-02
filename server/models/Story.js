@@ -18,7 +18,7 @@ const commentSchema = new mongoose.Schema({
 }, { _id: true });
 
 const storySchema = new mongoose.Schema({
-  user: {
+  author: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
@@ -49,6 +49,10 @@ const storySchema = new mongoose.Schema({
     type: String,
     maxlength: 200,
     default: ""
+  },
+  image: {
+    type: String,
+    default: null
   },
   coverImage: {
     type: String,
@@ -83,6 +87,10 @@ const storySchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  isPublic: {
+    type: Boolean,
+    default: true
+  },
   isDeleted: {
     type: Boolean,
     default: false
@@ -96,10 +104,10 @@ const storySchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-storySchema.index({ user: 1, createdAt: -1 });
+storySchema.index({ author: 1, createdAt: -1 });
 storySchema.index({ location: 1 });
 storySchema.index({ destination: 1 });
-storySchema.index({ isPublished: 1, createdAt: -1 });
+storySchema.index({ isPublic: 1, createdAt: -1 });
 storySchema.index({ tags: 1 });
 
 // Virtual for like count

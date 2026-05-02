@@ -20,6 +20,28 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
+// Environment variable validation
+const requiredEnvVars = ['MONGO_URI', 'JWT_SECRET'];
+const optionalEnvVars = ['OPENROUTER_API_KEY', 'UNSPLASH_ACCESS_KEY', 'CLIENT_URL'];
+
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:');
+  missingEnvVars.forEach(varName => console.error(`   - ${varName}`));
+  console.error('\nPlease set these variables in your .env file and restart the server.');
+  process.exit(1);
+}
+
+// Log optional variables status
+optionalEnvVars.forEach(varName => {
+  if (!process.env[varName]) {
+    console.warn(`⚠️  Optional env var ${varName} not set. Some features may not work.`);
+  }
+});
+
+console.log('✅ Environment variables validated');
+
 const app = express();
 
 // Security middleware

@@ -3,12 +3,13 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { storyAPI } from '../api/api.js';
 import { Button, Card, Badge, SkeletonCard } from '../components/ui/index.js';
-import { 
-  BookOpen, Plus, Search, MapPin, Heart, MessageCircle, 
+import {
+  BookOpen, Plus, Search, MapPin, Heart, MessageCircle,
   Calendar, User, X, Camera, Upload, Trash2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { formatDate, getInitials } from '../utils/formatters.js';
+import { toast } from 'react-hot-toast';
 
 export default function Stories() {
   const [stories, setStories] = useState([]);
@@ -28,16 +29,32 @@ export default function Stories() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchStories();
-  }, []);
+    if (activeTab === 'all') {
+      fetchStories();
+    } else {
+      fetchMyStories();
+    }
+  }, [activeTab]);
 
   const fetchStories = async () => {
     try {
       setLoading(true);
       const response = await storyAPI.getAll();
-      setStories(response.data.data || []);
+      setStories(response.data.stories || response.data.data || []);
     } catch (error) {
       console.error('Error fetching stories:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchMyStories = async () => {
+    try {
+      setLoading(true);
+      const response = await storyAPI.getMyStories();
+      setStories(response.data.stories || response.data.data || []);
+    } catch (error) {
+      console.error('Error fetching my stories:', error);
     } finally {
       setLoading(false);
     }
@@ -73,29 +90,45 @@ export default function Stories() {
       formData.append('location', newStory.location);
       formData.append('content', newStory.content);
       if (newStory.coverImage) {
-        formData.append('coverImage', newStory.coverImage);
+        formData.append('image', newStory.coverImage); // Changed from 'coverImage' to 'image'
       }
 
       await storyAPI.create(formData);
       setNewStory({ title: '', location: '', content: '', coverImage: null });
       setImagePreview(null);
       setShowCreateForm(false);
-      fetchStories();
+      toast.success('Story shared successfully!');
+      if (activeTab === 'my') {
+        fetchMyStories();
+      } else {
+        fetchStories();
+      }
     } catch (error) {
       console.error('Error creating story:', error);
-      alert('Failed to create story: ' + (error.response?.data?.message || error.message));
+      toast.error(error.response?.data?.message || 'Failed to share story');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleLike = async (storyId) => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated) {
+      toast.error('Sign in to like stories');
+      return;
+    }
+
     try {
-      await storyAPI.like(storyId);
-      fetchStories();
+      const response = await storyAPI.like(storyId);
+      const { liked, likeCount, likes } = response.data;
+
+      // Update story in local state immediately (optimistic update)
+      setStories(prev => prev.map(story =>
+        story._id === storyId
+          ? { ...story, likes: likes, likeCount }
+          : story
+      ));
     } catch (error) {
-      console.error('Error liking story:', error);
+      toast.error('Failed to update like');
     }
   };
 
@@ -106,15 +139,11 @@ export default function Stories() {
 
   // Compare user IDs as strings to handle ObjectId vs string comparison
   const userStories = stories.filter(s => {
-    const storyUserId = s.user?._id?.toString();
-    const currentUserId = user?._id?.toString();
-    const isMatch = storyUserId && currentUserId && storyUserId === currentUserId;
-    console.log('Story user ID:', storyUserId, 'Current user ID:', currentUserId, 'Match:', isMatch);
+    const storyAuthorId = s.author?._id?.toString() || s.author?.toString();
+    const currentUserId = user?._id?.toString() || user?.toString();
+    const isMatch = storyAuthorId && currentUserId && storyAuthorId === currentUserId;
     return isMatch;
   });
-
-  console.log('Stories - Total:', stories.length, 'User Stories:', userStories.length, 'Active Tab:', activeTab);
-  console.log('Current user:', user?._id);
 
   const displayStories = activeTab === 'my' ? userStories : filteredStories;
 
@@ -309,78 +338,87 @@ export default function Stories() {
           </motion.div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {displayStories.map((story, index) => (
-              <motion.div
-                key={story._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Card className="h-full flex flex-col" hover>
-                  {/* Image */}
-                  <div className="aspect-[16/10] bg-surface-2 rounded-lg overflow-hidden mb-4">
-                    {story.coverImage ? (
-                      <img
-                        src={story.coverImage}
-                        alt={story.title}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = '';
-                          e.target.style.display = 'none';
-                          e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center"><svg class="w-8 h-8 text-text-tertiary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></div>';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Camera className="w-8 h-8 text-text-tertiary" />
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Content */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="ghost" size="sm" className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3" /> {story.location}
-                      </Badge>
+            {displayStories.map((story, index) => {
+              const isLiked = story.likes?.some(id => id === user?._id || id?._id === user?._id || id?.toString() === user?._id?.toString());
+              const imageSource = story.image || story.coverImage || null;
+
+              return (
+                <motion.div
+                  key={story._id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <Card className="h-full flex flex-col" hover>
+                    {/* Image */}
+                    <div className="aspect-[16/10] bg-surface-2 rounded-lg overflow-hidden mb-4">
+                      {imageSource ? (
+                        <img
+                          src={imageSource}
+                          alt={story.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        // Destination-based Unsplash image as final fallback
+                        <img
+                          src={`https://source.unsplash.com/600x400/?${encodeURIComponent(story.destination || story.location)},travel`}
+                          alt={story.destination || story.location}
+                          onError={(e) => {
+                            e.target.parentElement.classList.add('no-image');
+                          }}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
                     </div>
-                    <h3 className="font-semibold text-text-primary mb-2 line-clamp-2">
-                      {story.title}
-                    </h3>
-                    <p className="text-text-secondary text-sm line-clamp-3 mb-4">
-                      {story.content}
-                    </p>
-                  </div>
-                  
-                  {/* Footer */}
-                  <div className="flex items-center justify-between pt-4 border-t border-border">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                        <span className="text-xs font-medium text-accent">
-                          {getInitials(story.user?.name)}
+
+                    {/* Content */}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="ghost" size="sm" className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> {story.location}
+                        </Badge>
+                      </div>
+                      <h3 className="font-semibold text-text-primary mb-2 line-clamp-2">
+                        {story.title}
+                      </h3>
+                      <p className="text-text-secondary text-sm line-clamp-3 mb-4">
+                        {story.content}
+                      </p>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-between pt-4 border-t border-border">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                          <span className="text-xs font-medium text-accent">
+                            {getInitials(story.author?.name)}
+                          </span>
+                        </div>
+                        <span className="text-sm text-text-secondary">{story.author?.name}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleLike(story._id)}
+                          className={`flex items-center gap-1 text-sm ${isLiked ? 'text-accent' : 'text-text-secondary'}`}
+                          style={{ color: isLiked ? '#EF4444' : 'currentColor' }}
+                        >
+                          <svg viewBox="0 0 24 24" fill={isLiked ? '#EF4444' : 'none'} stroke={isLiked ? '#EF4444' : 'currentColor'} strokeWidth="2" className="w-4 h-4">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                          </svg>
+                          <span>{story.likes?.length || 0}</span>
+                        </button>
+                        <span className="text-sm text-text-tertiary">
+                          {formatDate(story.createdAt)}
                         </span>
                       </div>
-                      <span className="text-sm text-text-secondary">{story.user?.name}</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => handleLike(story._id)}
-                        className={`flex items-center gap-1 text-sm ${
-                          story.likes?.includes(user?._id) ? 'text-accent' : 'text-text-secondary'
-                        }`}
-                      >
-                        <Heart className={`w-4 h-4 ${story.likes?.includes(user?._id) ? 'fill-current' : ''}`} />
-                        {story.likes?.length || 0}
-                      </button>
-                      <span className="text-sm text-text-tertiary">
-                        {formatDate(story.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
+                  </Card>
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>

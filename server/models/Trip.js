@@ -25,7 +25,7 @@ const activitySchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ["sightseeing", "food", "adventure", "culture", "shopping", "relaxation", "transport", "other"],
+    enum: ["sightseeing", "food", "adventure", "culture", "shopping", "relaxation", "transport", "nightlife", "other"],
     default: "sightseeing"
   },
   location: {
@@ -129,16 +129,16 @@ const tripSchema = new mongoose.Schema({
   budget: {
     type: String,
     required: true,
-    enum: ["budget", "comfort", "luxury"]
+    enum: ["budget", "moderate", "comfort", "luxury"]
   },
   travelType: {
     type: String,
     required: true,
-    enum: ["solo", "couple", "family", "group"]
+    enum: ["solo", "couple", "family", "group", "balanced", "adventure", "cultural", "relaxation", "backpacker", "luxury", "business"]
   },
   interests: [{
     type: String,
-    enum: ["Adventure", "Food", "History", "Nature", "Nightlife", "Culture", "Shopping", "Wellness", "Photography", "Local Experiences"]
+    enum: ["adventure", "food", "culture", "history", "nature", "nightlife", "shopping", "wellness", "photography", "local experiences"]
   }],
   specialRequests: {
     type: String,

@@ -14,6 +14,7 @@ export default function PlaceScanner() {
   const [isScanning, setIsScanning] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
 
   const onDrop = useCallback((acceptedFiles) => {
     const file = acceptedFiles[0];
@@ -36,15 +37,19 @@ export default function PlaceScanner() {
 
   const handleScan = async () => {
     if (!selectedImage) return;
-    
+
     setIsScanning(true);
     setError(null);
-    
+
     try {
-      const response = await placesAPI.identify(selectedImage);
-      setResult(response.data.data.place);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to identify place. Please try again.');
+      const formData = new FormData();
+      formData.append('image', selectedImage); // 'image' must match multer field name
+
+      // CRITICAL: Do NOT set Content-Type header — let browser set it with boundary
+      const response = await placesAPI.identify(formData);
+      setResult(response.data.data);
+    } catch (error) {
+      setError(error.response?.data?.message || 'Failed to scan image');
     } finally {
       setIsScanning(false);
     }
@@ -216,113 +221,162 @@ export default function PlaceScanner() {
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-4"
                 >
-                  <Card className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <Badge variant="success" className="mb-2">
-                          {Math.round(result.confidence * 100)}% Match
-                        </Badge>
-                        <h2 className="text-2xl font-display font-semibold text-text-primary">
-                          {result.name}
-                        </h2>
-                        <p className="text-text-secondary flex items-center gap-2 mt-1">
-                          <MapPin className="w-4 h-4" />
-                          {result.location}
-                        </p>
+                  {result.identified ? (
+                    <Card className="p-6">
+                      {/* Header */}
+                      <div className="place-header mb-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h2 className="text-2xl font-display font-semibold text-text-primary">
+                              {result.placeName}
+                            </h2>
+                            {result.localName && (
+                              <p className="text-text-secondary text-sm mt-1">{result.localName}</p>
+                            )}
+                            <p className="text-text-secondary flex items-center gap-2 mt-2">
+                              <MapPin className="w-4 h-4" />
+                              {result.location?.city}, {result.location?.country}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Badge variant="success">
+                              {result.confidence}% confidence
+                            </Badge>
+                            <Badge variant="default">{result.placeType}</Badge>
+                          </div>
+                        </div>
                       </div>
-                      {result.rating && (
-                        <div className="flex items-center gap-1 text-accent">
-                          <Star className="w-5 h-5 fill-current" />
-                          <span className="font-medium">{result.rating}</span>
+
+                      {/* Tabs */}
+                      <div className="tabs flex gap-2 mb-6 border-b border-border pb-2">
+                        {['overview', 'practical', 'tips', 'plan'].map(tab => (
+                          <button
+                            key={tab}
+                            className={`px-4 py-2 text-sm font-medium rounded-t transition-colors ${
+                              activeTab === tab
+                                ? 'bg-accent/10 text-accent'
+                                : 'text-text-secondary hover:text-text-primary'
+                            }`}
+                            onClick={() => setActiveTab(tab)}
+                          >
+                            {tab === 'overview' && '📖 Overview'}
+                            {tab === 'practical' && '🗺️ Practical Info'}
+                            {tab === 'tips' && '💡 Insider Tips'}
+                            {tab === 'plan' && '✈️ Plan a Trip'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Tab Content */}
+                      {activeTab === 'overview' && (
+                        <div>
+                          <p className="text-text-primary leading-relaxed mb-4">{result.overview}</p>
+                          <p className="text-text-secondary mb-4">
+                            <strong>Historical Significance:</strong> {result.historicalSignificance}
+                          </p>
+                          <p className="text-text-secondary mb-4">
+                            <strong>Why Visit:</strong> {result.whyVisit}
+                          </p>
+                          <p className="text-text-secondary mb-4">
+                            <strong>Best Time:</strong> {result.bestTimeToVisit}
+                          </p>
+                          <p className="text-text-secondary">
+                            <strong>Visit Duration:</strong> {result.estimatedVisitDuration}
+                          </p>
                         </div>
                       )}
-                    </div>
 
-                    <p className="text-text-primary leading-relaxed mb-6">
-                      {result.description}
-                    </p>
-
-                    {/* Quick Stats */}
-                    <div className="grid grid-cols-3 gap-4 mb-6">
-                      <div className="p-3 bg-surface-2 rounded-lg text-center">
-                        <Clock className="w-5 h-5 text-accent mx-auto mb-1" />
-                        <p className="text-sm text-text-secondary">Best Time</p>
-                        <p className="font-medium text-text-primary">{result.bestTimeToVisit}</p>
-                      </div>
-                      <div className="p-3 bg-surface-2 rounded-lg text-center">
-                        <DollarSign className="w-5 h-5 text-accent mx-auto mb-1" />
-                        <p className="text-sm text-text-secondary">Entry Fee</p>
-                        <p className="font-medium text-text-primary">{result.entryFee}</p>
-                      </div>
-                      <div className="p-3 bg-surface-2 rounded-lg text-center">
-                        <Clock className="w-5 h-5 text-accent mx-auto mb-1" />
-                        <p className="text-sm text-text-secondary">Duration</p>
-                        <p className="font-medium text-text-primary">{result.recommendedDuration}</p>
-                      </div>
-                    </div>
-
-                    {/* Highlights */}
-                    <div className="mb-6">
-                      <h3 className="font-medium text-text-primary mb-3 flex items-center gap-2">
-                        <Info className="w-4 h-4" />
-                        Key Highlights
-                      </h3>
-                      <ul className="space-y-2">
-                        {result.highlights.map((highlight, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
-                            <span className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 flex-shrink-0" />
-                            {highlight}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Tips */}
-                    <div className="p-4 bg-accent/5 border border-accent/20 rounded-lg">
-                      <h3 className="font-medium text-text-primary mb-2 flex items-center gap-2">
-                        <Info className="w-4 h-4 text-accent" />
-                        Travel Tips
-                      </h3>
-                      <ul className="space-y-2">
-                        {result.tips.map((tip, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
-                            <span className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 flex-shrink-0" />
-                            {tip}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Nearby Attractions */}
-                    {result.nearbyAttractions && result.nearbyAttractions.length > 0 && (
-                      <div className="mt-6">
-                        <h3 className="font-medium text-text-primary mb-3">
-                          Nearby Attractions
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          {result.nearbyAttractions.map((attraction, i) => (
-                            <Badge key={i} variant="ghost">{attraction}</Badge>
-                          ))}
+                      {activeTab === 'practical' && (
+                        <div>
+                          <p className="text-text-secondary mb-4">
+                            <strong>Entry Fee:</strong> {result.entryFee}
+                          </p>
+                          <p className="text-text-secondary mb-4">
+                            <strong>Opening Hours:</strong> {result.openingHours}
+                          </p>
+                          <p className="text-text-secondary mb-4">
+                            <strong>How to Reach:</strong> {result.howToReach}
+                          </p>
+                          <p className="text-text-secondary mb-4">
+                            <strong>Accessibility:</strong> {result.accessibilityInfo}
+                          </p>
+                          {result.nearbyAttractions && (
+                            <div className="mb-4">
+                              <strong className="text-text-primary">Nearby Attractions:</strong>
+                              <ul className="mt-2 space-y-1">
+                                {result.nearbyAttractions.map((p, i) => (
+                                  <li key={i} className="text-text-secondary">• {p}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {result.localCuisine && (
+                            <div>
+                              <strong className="text-text-primary">Local Cuisine:</strong>
+                              <ul className="mt-2 space-y-1">
+                                {result.localCuisine.map((d, i) => (
+                                  <li key={i} className="text-text-secondary">• {d}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    <div className="flex gap-3 mt-6">
-                      <Button 
-                        className="flex-1" 
-                        onClick={clearImage}
-                        variant="secondary"
-                      >
-                        Scan Another
+                      {activeTab === 'tips' && (
+                        <div>
+                          <div className="mb-4">
+                            <strong className="text-text-primary">Insider Tips:</strong>
+                            <ul className="mt-2 space-y-2">
+                              {result.insiderTips?.map((t, i) => (
+                                <li key={i} className="text-text-secondary">• {t}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <p className="text-text-secondary mb-4">
+                            <strong>Photography:</strong> {result.photographySpots}
+                          </p>
+                          <p className="text-text-secondary">
+                            <strong>General Advice:</strong> {result.travelTips}
+                          </p>
+                        </div>
+                      )}
+
+                      {activeTab === 'plan' && (
+                        <div>
+                          <p className="text-text-primary mb-4">
+                            Ready to visit {result.placeName}?
+                          </p>
+                          <Button
+                            className="w-full"
+                            onClick={() => window.location.href = `/plan?destination=${result.location?.city}, ${result.location?.country}`}
+                          >
+                            ✈️ Plan a Trip to {result.location?.city}
+                          </Button>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 mt-6 pt-6 border-t border-border">
+                        <Button
+                          className="flex-1"
+                          onClick={clearImage}
+                          variant="secondary"
+                        >
+                          Scan Another
+                        </Button>
+                      </div>
+                    </Card>
+                  ) : (
+                    <Card className="p-6">
+                      <p className="text-text-secondary">{result.message}</p>
+                      <p className="text-text-secondary mt-2">
+                        Suggested searches: {result.suggestedSearchTerms?.join(', ')}
+                      </p>
+                      <Button className="mt-4" onClick={clearImage}>
+                        Try Another Image
                       </Button>
-                      <Button 
-                        className="flex-1"
-                        onClick={() => {/* TODO: Plan trip to this location */}}
-                      >
-                        Plan Trip Here
-                      </Button>
-                    </div>
-                  </Card>
+                    </Card>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

@@ -1,6 +1,4 @@
 import axios from "axios";
-import fs from "fs";
-import path from "path";
 
 // Helper function to call OpenRouter with vision
 const callVisionAI = async (base64Image) => {
@@ -75,95 +73,104 @@ If place cannot be identified, return {"identified": false, "message": "Could no
 // @route   POST /api/places/identify
 // @access  Public
 export const identifyPlace = async (req, res) => {
-  let uploadedFilePath = null;
-
   try {
-    // Check if file was uploaded
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "Please upload an image"
-      });
+      return res.status(400).json({ message: 'No image file provided' });
     }
 
-    uploadedFilePath = req.file.path;
+    // Convert buffer to base64
+    const base64Image = req.file.buffer.toString('base64');
+    const mimeType = req.file.mimetype;
+    const dataUrl = `data:${mimeType};base64,${base64Image}`;
 
-    // Read file and convert to base64
-    const imageBuffer = fs.readFileSync(uploadedFilePath);
-    const base64Image = imageBuffer.toString("base64");
-
-    // Call vision AI
-    const aiResponse = await callVisionAI(base64Image);
-
-    // Delete uploaded file after processing
-    try {
-      fs.unlinkSync(uploadedFilePath);
-    } catch (unlinkError) {
-      console.error("Failed to delete uploaded file:", unlinkError);
-    }
-
-    // Parse JSON from response
-    let placeData;
-    try {
-      // Extract JSON if wrapped in markdown code blocks
-      let jsonStr = aiResponse;
-      const codeBlockMatch = aiResponse.match(/```json\n?([\s\S]*?)\n?```/);
-      if (codeBlockMatch) {
-        jsonStr = codeBlockMatch[1];
+    const response = await axios.post(
+      `${process.env.OPENROUTER_BASE_URL}/chat/completions`,
+      {
+        model: 'google/gemini-2.0-flash-001',
+        max_tokens: 2000,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: { url: dataUrl }
+              },
+              {
+                type: 'text',
+                text: `You are an expert travel guide and landmark recognition AI. 
+Analyze this image and identify the location/landmark shown.
+Respond ONLY with valid JSON (no markdown, no explanation):
+{
+  "identified": true,
+  "placeName": "Exact real name of the place",
+  "localName": "Name in local language if applicable",
+  "location": {
+    "city": "city name",
+    "state": "state/region",
+    "country": "country name",
+    "continent": "continent"
+  },
+  "confidence": 95,
+  "placeType": "temple/museum/beach/mountain/palace/market/park/monument/etc",
+  "overview": "2-3 sentences about what makes this place special",
+  "historicalSignificance": "Historical background and importance",
+  "whyVisit": "Why tourists love visiting this place",
+  "bestTimeToVisit": "Recommended months or season to visit",
+  "entryFee": "Free / ₹500 / $10 / etc",
+  "openingHours": "6 AM - 8 PM daily / 24/7 / etc",
+  "howToReach": "How to get there from the nearest major city",
+  "insiderTips": [
+    "Specific tip 1 most tourists don't know",
+    "Specific tip 2",
+    "Specific tip 3"
+  ],
+  "nearbyAttractions": ["Real nearby place 1", "Real nearby place 2", "Real nearby place 3"],
+  "photographySpots": "Best spots and angles for photography here",
+  "localCuisine": ["Specific dish 1 from this region", "Specific dish 2"],
+  "estimatedVisitDuration": "1-2 hours",
+  "crowdLevel": "low/medium/high",
+  "accessibilityInfo": "Wheelchair accessible / Involves climbing / etc",
+  "travelTips": "Overall advice for visiting this specific place"
+}
+If you cannot identify the specific location, still describe what you can see:
+{
+  "identified": false,
+  "placeType": "what type of place it appears to be",
+  "visibleFeatures": "what you can see in the image",
+  "possibleLocations": ["country or region it might be in"],
+  "message": "Could not identify exact location. Try a clearer image of the landmark.",
+  "suggestedSearchTerms": ["term1", "term2"]
+}`
+              }
+            ]
+          }
+        ]
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': process.env.CLIENT_URL,
+          'X-Title': 'Musafir Place Scanner'
+        }
       }
-      placeData = JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.error("JSON parse error:", parseError);
-      console.error("AI response:", aiResponse);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to parse AI response. Please try again.",
-        error: "JSON_PARSE_ERROR"
-      });
-    }
+    );
 
-    // If user is authenticated, increment AI usage
-    if (req.user) {
-      await req.user.incrementAIUsage();
-    }
+    let rawContent = response.data.choices[0].message.content;
+    rawContent = rawContent.replace(/```json\n?/gi, '').replace(/```\n?/gi, '').trim();
 
-    res.json({
-      success: true,
-      data: placeData
-    });
+    const jsonStart = rawContent.indexOf('{');
+    const jsonEnd = rawContent.lastIndexOf('}');
+    const jsonStr = rawContent.substring(jsonStart, jsonEnd + 1);
+    const placeData = JSON.parse(jsonStr);
+
+    return res.json({ success: true, data: placeData });
 
   } catch (error) {
-    console.error("Identify place error:", error);
-
-    // Clean up uploaded file on error
-    if (uploadedFilePath) {
-      try {
-        fs.unlinkSync(uploadedFilePath);
-      } catch (unlinkError) {
-        // Ignore unlink errors
-      }
-    }
-
-    // Specific error handling
-    if (error.message === "OPENROUTER_API_KEY not configured") {
-      return res.status(503).json({
-        success: false,
-        message: "AI vision service temporarily unavailable",
-        error: "AI_CONFIG_ERROR"
-      });
-    }
-
-    if (error.response?.status === 429) {
-      return res.status(429).json({
-        success: false,
-        message: "Rate limit exceeded. Please try again in a moment.",
-        error: "RATE_LIMIT"
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to identify place. Please try again.",
+    console.error('Place identify error:', error.response?.data || error.message);
+    return res.status(500).json({
+      message: 'Failed to identify place',
       error: error.message
     });
   }

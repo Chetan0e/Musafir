@@ -4,7 +4,7 @@ import {
   getAllStories,
   getStoryById,
   getMyStories,
-  likeStory,
+  toggleLike,
   addComment,
   updateStory,
   deleteStory
@@ -16,14 +16,14 @@ const router = express.Router();
 
 // Public routes
 router.get("/", getAllStories);
-router.get("/:id", getStoryById);
 
-// Protected routes
-router.post("/", protect, uploadStoryImages.single('coverImage'), createStory);
+// Protected routes - my-stories MUST be before /:id to avoid being shadowed
 router.get("/my-stories", protect, getMyStories);
-router.post("/:id/like", protect, likeStory);
+router.get("/:id", getStoryById);
+router.post("/", protect, uploadStoryImages.single('image'), createStory);
+router.post("/:id/like", protect, toggleLike);
 router.post("/:id/comments", protect, addComment);
-router.put("/:id", protect, uploadStoryImages.single('coverImage'), updateStory);
+router.put("/:id", protect, uploadStoryImages.single('image'), updateStory);
 router.delete("/:id", protect, deleteStory);
 
 export default router;

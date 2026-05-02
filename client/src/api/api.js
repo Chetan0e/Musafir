@@ -4,17 +4,18 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const API = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  },
   withCredentials: true
 });
 
-// Add token to requests
+// Attach JWT token to every request and handle FormData
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Remove Content-Type for FormData (let browser set it with boundary)
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
   }
   return config;
 });
@@ -77,22 +78,14 @@ export const aiAPI = {
 
 // Places API
 export const placesAPI = {
-  identify: (formData) => API.post('/places/identify', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
+  identify: (formData) => API.post('/places/identify', formData),
   search: (query) => API.get('/places/search', { params: { q: query } }),
   getDetails: (params) => API.get('/places/details', { params }),
 };
 
 // Story API
 export const storyAPI = {
-  create: (data) => {
-    // Check if data is FormData (file upload)
-    const isFormData = data instanceof FormData;
-    return API.post('/stories', data, {
-      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : {}
-    });
-  },
+  create: (data) => API.post('/stories', data),
   getAll: (params) => API.get('/stories', { params }),
   getStoryById: (id) => API.get(`/stories/${id}`),
   getMyStories: (params) => API.get('/stories/my-stories', { params }),

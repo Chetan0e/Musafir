@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { 
-  MapPin, Calendar, Users, Wallet, Compass, Sparkles, 
-  ArrowRight, Loader2, Check, Clock, Utensils, Camera, 
+import {
+  MapPin, Calendar, Users, Wallet, Compass, Sparkles,
+  ArrowRight, Loader2, Check, Clock, Utensils, Camera,
   Briefcase, Heart, Footprints, ChevronRight
 } from 'lucide-react';
 import { Button, Input, Card, Badge } from '../components/ui/index.js';
 import { tripAPI } from '../api/api.js';
+import { toast } from 'react-hot-toast';
 
 // Budget options
 const budgetOptions = [
@@ -143,11 +144,13 @@ export default function PlanTrip() {
       };
 
       console.log('Saving trip with data:', tripData);
-      await tripAPI.save(tripData);
+      const result = await tripAPI.save(tripData);
+      toast.success('Trip saved successfully! View it in your dashboard.');
       navigate('/dashboard');
     } catch (error) {
       console.error('Error saving trip:', error);
-      alert('Failed to save trip: ' + (error.response?.data?.message || error.message));
+      const message = error.response?.data?.message || 'Failed to save trip';
+      toast.error(message);
     }
   };
 
@@ -476,35 +479,86 @@ export default function PlanTrip() {
               {/* Day by Day Itinerary */}
               <div className="space-y-4">
                 <h3 className="text-2xl font-semibold text-text-primary">Your Itinerary</h3>
-                {generatedTrip.itinerary.map((day, index) => (
-                  <Card key={index} className="p-6">
-                    <div className="flex items-center space-x-3 mb-4">
-                      <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
-                        <span className="text-accent font-medium">{day.day}</span>
-                      </div>
-                      <h4 className="text-lg font-semibold text-text-primary">{day.title}</h4>
-                    </div>
-                    
-                    <div className="ml-13 pl-7 border-l-2 border-border space-y-4">
-                      {day.activities.map((activity, actIndex) => (
-                        <div key={actIndex} className="relative">
-                          <div className="absolute -left-[33px] w-4 h-4 rounded-full bg-accent/30 border-2 border-accent" />
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h5 className="font-medium text-text-primary">{activity.name}</h5>
-                              <p className="text-sm text-text-secondary mt-1">{activity.description}</p>
-                              <div className="flex items-center gap-4 mt-2 text-sm text-text-tertiary">
-                                <span>{activity.duration}</span>
-                                <span>•</span>
-                                <span>{activity.cost}</span>
-                              </div>
-                            </div>
-                          </div>
+                {generatedTrip.itinerary.map((day, index) => {
+                  const timeGroups = {
+                    morning: day.activities?.filter(a => a.time === 'morning') || [],
+                    afternoon: day.activities?.filter(a => a.time === 'afternoon') || [],
+                    evening: day.activities?.filter(a => a.time === 'evening') || []
+                  };
+                  const timeLabels = {
+                    morning: '🌅 Morning',
+                    afternoon: '☀️ Afternoon',
+                    evening: '🌙 Evening'
+                  };
+
+                  return (
+                    <Card key={index} className="p-6">
+                      <div className="flex items-center space-x-3 mb-4">
+                        <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                          <span className="text-accent font-medium">{day.day}</span>
                         </div>
-                      ))}
-                    </div>
-                  </Card>
-                ))}
+                        <h4 className="text-lg font-semibold text-text-primary">{day.theme}</h4>
+                      </div>
+
+                      {Object.entries(timeGroups).map(([time, acts]) =>
+                        acts.length > 0 && (
+                          <div key={time} className="mb-4">
+                            <h4 className="font-medium text-text-primary mb-3">{timeLabels[time]}</h4>
+                            {acts.map((activity, i) => (
+                              <div key={i} className="ml-4 pl-4 border-l-2 border-border mb-4">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <h5 className="font-medium text-text-primary">{activity.name}</h5>
+                                    <p className="text-sm text-text-secondary mt-1">{activity.description}</p>
+                                    <div className="flex items-center gap-4 mt-2 text-sm text-text-tertiary">
+                                      <span>📍 {activity.location}</span>
+                                      <span>⏱ {activity.duration}</span>
+                                      <span>{activity.estimatedCost === 0 ? 'Free' : `₹${activity.estimatedCost.toLocaleString('en-IN')}`}</span>
+                                    </div>
+                                    {activity.tips && (
+                                      <div className="mt-2 text-sm text-text-secondary bg-accent/5 p-2 rounded">
+                                        💡 {activity.tips}
+                                      </div>
+                                    )}
+                                    {activity.mustTry && (
+                                      <div className="mt-2 text-sm text-accent">
+                                        ⭐ Must try: {activity.mustTry}
+                                      </div>
+                                    )}
+                                    <a
+                                      href={`https://www.google.com/maps/search/${encodeURIComponent(activity.name + ' ' + activity.location)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-block mt-2 text-sm text-accent hover:underline"
+                                    >
+                                      🗺️ View on Google Maps
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      )}
+
+                      {/* Meals section */}
+                      {day.meals && (
+                        <div className="mt-4 pt-4 border-t border-border">
+                          <h4 className="font-medium text-text-primary mb-2">🍽️ Where to Eat</h4>
+                          {day.meals.breakfast && <p className="text-sm text-text-secondary">🌅 Breakfast: {day.meals.breakfast}</p>}
+                          {day.meals.lunch && <p className="text-sm text-text-secondary">☀️ Lunch: {day.meals.lunch}</p>}
+                          {day.meals.dinner && <p className="text-sm text-text-secondary">🌙 Dinner: {day.meals.dinner}</p>}
+                        </div>
+                      )}
+
+                      {/* Day budget */}
+                      <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
+                        <span className="text-sm text-text-secondary">Day {day.day} estimated budget:</span>
+                        <strong className="text-text-primary">₹{day.dayBudget?.toLocaleString('en-IN') || '—'}</strong>
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             </motion.div>
           )}

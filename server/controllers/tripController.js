@@ -3,7 +3,7 @@ import User from "../models/User.js";
 import axios from "axios";
 import fs from "fs";
 
-// Mock trip generator for fallback when API fails
+// Mock trip generator for fallback when API fails - uses realistic generic names
 const generateMockTrip = (destination, days, budget, travelType, interests) => {
   const budgetDescriptions = {
     budget: { daily: 2500, hotel: "Budget hostel/guesthouse", food: "Street food & local cafes" },
@@ -12,9 +12,19 @@ const generateMockTrip = (destination, days, budget, travelType, interests) => {
     luxury: { daily: 15000, hotel: "Premium hotel/resort", food: "Fine dining" }
   };
   const bd = budgetDescriptions[budget] || budgetDescriptions.moderate;
-  
+
+  const genericActivities = {
+    morning: ["Historic City Center", "Central Market", "Old Town Square", "Main Cathedral", "Royal Palace", "Ancient Temple", "National Museum", "Botanical Gardens", "Central Park", " Waterfront Promenade"],
+    afternoon: ["Traditional Craft District", "Artisan Quarter", "Local Food Market", "Cultural Center", "Heritage Museum", "Art Gallery", "Historic Fortress", "Local Village", "Scenic Viewpoint", "Traditional Workshop"],
+    evening: ["Riverside Dining District", "Night Market", "Cultural Show Venue", "Sunset Viewpoint", "Old Town Restaurants", "Harbor Walk", "Evening Bazaar", "Rooftop Lounge", "Traditional Theater", "Nightlife District"]
+  };
+
   const itinerary = [];
   for (let i = 1; i <= days; i++) {
+    const morningActivity = genericActivities.morning[(i - 1) % genericActivities.morning.length];
+    const afternoonActivity = genericActivities.afternoon[(i - 1) % genericActivities.afternoon.length];
+    const eveningActivity = genericActivities.evening[(i - 1) % genericActivities.evening.length];
+
     itinerary.push({
       day: i,
       date: `Day ${i}`,
@@ -22,8 +32,8 @@ const generateMockTrip = (destination, days, budget, travelType, interests) => {
       activities: [
         {
           time: "morning",
-          name: `Famous landmark ${i} in ${destination}`,
-          description: `Explore the beautiful attractions of ${destination}. Perfect for ${interests.slice(0, 2).join(" and ")} lovers.`,
+          name: `${morningActivity} of ${destination}`,
+          description: `Explore the ${morningActivity.toLowerCase()} in ${destination}. Perfect for ${interests.slice(0, 2).join(" and ") || "sightseeing"} lovers.`,
           duration: "2-3 hours",
           estimatedCost: Math.floor(bd.daily * 0.3),
           category: "sightseeing",
@@ -33,8 +43,8 @@ const generateMockTrip = (destination, days, budget, travelType, interests) => {
         },
         {
           time: "afternoon",
-          name: `Cultural experience ${i}`,
-          description: `Immerse yourself in local culture and traditions of ${destination}.`,
+          name: `${afternoonActivity}`,
+          description: `Immerse yourself in the ${afternoonActivity.toLowerCase()} and traditions of ${destination}.`,
           duration: "2-3 hours",
           estimatedCost: Math.floor(bd.daily * 0.4),
           category: "culture",
@@ -44,14 +54,14 @@ const generateMockTrip = (destination, days, budget, travelType, interests) => {
         },
         {
           time: "evening",
-          name: `Evening entertainment ${i}`,
-          description: `Enjoy the vibrant nightlife and dining scene of ${destination}.`,
+          name: `${eveningActivity}`,
+          description: `Enjoy the vibrant atmosphere at ${eveningActivity.toLowerCase()} in ${destination}.`,
           duration: "2-3 hours",
           estimatedCost: Math.floor(bd.daily * 0.3),
           category: "nightlife",
           location: `Downtown ${destination}`,
           tips: "Make dinner reservations in advance",
-          mustTry: "Signature cocktail at rooftop bar"
+          mustTry: "Signature local cuisine"
         }
       ],
       meals: {
@@ -64,7 +74,7 @@ const generateMockTrip = (destination, days, budget, travelType, interests) => {
       dayBudget: bd.daily
     });
   }
-  
+
   return JSON.stringify({
     title: `${destination} ${days}-Day ${travelType.charAt(0).toUpperCase() + travelType.slice(1)} Trip`,
     destination: destination,
@@ -82,7 +92,7 @@ const generateMockTrip = (destination, days, budget, travelType, interests) => {
 };
 
 // Helper function to call OpenRouter API
-const callOpenRouter = async (messages, temperature = 0.7, maxTokens = 2000) => {
+const callOpenRouter = async (messages, temperature = 0.7, maxTokens = 4000) => {
   const apiKey = process.env.OPENROUTER_API_KEY;
   console.log("API Key check - exists:", !!apiKey, "length:", apiKey ? apiKey.length : 0);
   
@@ -92,13 +102,13 @@ const callOpenRouter = async (messages, temperature = 0.7, maxTokens = 2000) => 
 
   const apiUrl = process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1/chat/completions";
   console.log("Calling OpenRouter API at:", apiUrl);
-  console.log("Using model: meta-llama/llama-3.1-8b-instruct:free");
+  console.log("Using model: google/gemini-2.0-flash-001");
   
   try {
     const response = await axios.post(
       apiUrl,
       {
-        model: "meta-llama/llama-3.1-8b-instruct:free",
+        model: "google/gemini-2.0-flash-001",
         messages,
         temperature,
         max_tokens: maxTokens
@@ -110,7 +120,7 @@ const callOpenRouter = async (messages, temperature = 0.7, maxTokens = 2000) => 
           "HTTP-Referer": process.env.CLIENT_URL || "http://localhost:5173",
           "X-Title": "Musafir Travel Planner"
         },
-        timeout: 30000
+        timeout: 60000
       }
     );
 
@@ -253,65 +263,65 @@ export const generateTrip = async (req, res) => {
     
     const budgetDescription = budgetDescriptions[budget] || budgetDescriptions.comfort;
 
-    const systemPrompt = `You are an expert travel planner with deep knowledge of Indian and international destinations. Generate a detailed, day-by-day travel itinerary in valid JSON format only (no markdown, no explanation text).`;
+    const systemPrompt = `You are an expert travel planner and local guide with encyclopedic knowledge of every destination worldwide. You ALWAYS use REAL, SPECIFIC place names — never generic placeholders. You know the exact names of monuments, restaurants, neighborhoods, museums, markets, parks, and cultural experiences at every destination. Your itineraries are used by real travelers so accuracy is critical. Always respond with valid JSON only.`;
 
-    const userPrompt = `Trip Details:
+    const userPrompt = `Create a detailed ${days}-day travel itinerary for ${destination} for ${travelers} traveler(s) with ${budget} budget, travel style: ${travelTypeFinal}, interests: ${interests.join(', ')}.
+${specialRequests ? 'Special requests: ' + specialRequests : ''}
 
-Destination: ${destination}
-Duration: ${days} days (${start.toDateString()} to ${end.toDateString()})
-Travelers: ${travelers} people
-Budget Level: ${budget} (${budgetDescription})
-Travel Type: ${travelTypeFinal}
-Interests: ${interests.join(", ") || "general"}
-Special Requests: ${specialRequests || "None"}
+CRITICAL: Use ONLY real, specific place names that actually exist at ${destination}. Never use generic names like "Famous landmark 1" or "Cultural experience". Every activity must have a real place name.
 
-Return ONLY a JSON object with this structure:
+Respond with ONLY this JSON (no markdown, no explanation):
 {
-  "title": "descriptive trip title",
-  "destination": "city, country",
-  "overview": "2-3 sentence trip overview",
-  "highlights": ["highlight 1", "highlight 2", "highlight 3"],
-  "bestTimeToVisit": "months/season info",
-  "localLanguage": "primary language(s)",
-  "currency": "INR",
-  "totalEstimatedCost": 15000,
+  "title": "5 Days in Tokyo: Food, Culture & Neon Nights",
+  "destination": "${destination}",
+  "overview": "2-3 sentences describing this specific trip",
+  "bestTimeToVisit": "specific months",
+  "localLanguage": "language name",
+  "currency": "currency code",
+  "totalEstimatedCost": 45000,
+  "highlights": ["Real Highlight 1", "Real Highlight 2", "Real Highlight 3", "Real Highlight 4"],
   "itinerary": [
     {
       "day": 1,
-      "date": "Day 1 - ${startDate}",
-      "theme": "Arrival & First Impressions",
+      "date": "Day 1",
+      "theme": "Arrival & Old Tokyo",
       "activities": [
         {
           "time": "morning",
-          "name": "Specific Place Name",
-          "description": "Detailed description with what to see and do",
+          "name": "REAL place name (e.g. Senso-ji Temple)",
+          "description": "Specific description of what to do and see here",
           "duration": "2-3 hours",
-          "estimatedCost": 500,
+          "estimatedCost": 0,
           "category": "sightseeing",
-          "location": "Specific address or area",
-          "tips": "Practical insider tip",
-          "mustTry": "specific food/experience at this place"
+          "location": "Specific neighborhood or address",
+          "tips": "One specific insider tip for this place",
+          "mustTry": "Specific thing to do/eat/see at this exact place"
         }
       ],
       "meals": {
-        "breakfast": "specific restaurant name + dish recommendation",
-        "lunch": "specific restaurant name + dish recommendation",
-        "dinner": "specific restaurant name + dish recommendation"
+        "breakfast": "Real restaurant name: specific dish recommendation",
+        "lunch": "Real restaurant or market name: specific dish",
+        "dinner": "Real restaurant name: specific dish"
       },
-      "accommodation": "specific area or hotel recommendation for budget level",
-      "localTransport": "how to get around on this day",
-      "dayBudget": 3500
+      "accommodation": "Recommended area to stay for this budget level",
+      "localTransport": "Specific transport instructions for this day",
+      "dayBudget": 5000
     }
   ],
-  "packingList": ["item1", "item2"],
-  "emergencyContacts": { "police": "100", "ambulance": "108", "tourist helpline": "1363" },
-  "usefulApps": ["app1", "app2"]
+  "packingList": ["item1", "item2", "item3"],
+  "emergencyContacts": {
+    "police": "local emergency number",
+    "ambulance": "local emergency number",
+    "touristHelpline": "if available"
+  },
+  "usefulApps": ["App name: purpose", "App name: purpose"]
 }
 
-Make all recommendations specific to the destination and budget level. Include real place names, restaurants, and practical tips.`;
+Generate exactly ${days} days. Use only real place names. Make it genuinely useful for a real traveler going to ${destination}.`;
 
     // Call OpenRouter API
     let aiResponse;
+    let isMockData = false;
     try {
       aiResponse = await callOpenRouter([
         { role: "system", content: systemPrompt },
@@ -321,30 +331,78 @@ Make all recommendations specific to the destination and budget level. Include r
       console.error("OpenRouter API failed, using fallback mock data");
       // Fallback mock response for testing
       aiResponse = generateMockTrip(destination, days, budget, travelTypeFinal, interests);
+      isMockData = true;
     }
 
-    // Parse JSON from response
+    // Parse JSON from response with robust error handling
     let tripData;
     try {
-      // Extract JSON if wrapped in markdown code blocks
-      let jsonStr = aiResponse;
-      const codeBlockMatch = aiResponse.match(/```json\n?([\s\S]*?)\n?```/);
-      if (codeBlockMatch) {
-        jsonStr = codeBlockMatch[1];
+      let rawContent = aiResponse;
+
+      // Strip any markdown code fences if present
+      rawContent = rawContent
+        .replace(/```json\n?/gi, '')
+        .replace(/```\n?/gi, '')
+        .trim();
+
+      // Find the JSON object (handle any leading/trailing text)
+      const jsonStart = rawContent.indexOf('{');
+      const jsonEnd = rawContent.lastIndexOf('}');
+      if (jsonStart === -1 || jsonEnd === -1) {
+        throw new Error('AI did not return valid JSON');
       }
+      const jsonStr = rawContent.substring(jsonStart, jsonEnd + 1);
       tripData = JSON.parse(jsonStr);
+
+      // Validate that it has real content (not placeholders) - only check for real AI responses
+      if (!isMockData) {
+        const firstActivity = tripData.itinerary?.[0]?.activities?.[0]?.name || '';
+        const isPlaceholder = firstActivity.toLowerCase().includes('famous landmark') ||
+            firstActivity.toLowerCase().includes('cultural experience') ||
+            firstActivity.toLowerCase().includes('evening entertainment') ||
+            firstActivity.toLowerCase().includes('landmark') && firstActivity.toLowerCase().includes('experience');
+
+        if (isPlaceholder) {
+          console.warn('AI returned placeholder data, using mock data instead');
+          // Replace with mock data instead of failing
+          const mockResponse = generateMockTrip(destination, days, budget, travelTypeFinal, interests);
+          const mockJsonStart = mockResponse.indexOf('{');
+          const mockJsonEnd = mockResponse.lastIndexOf('}');
+          tripData = JSON.parse(mockResponse.substring(mockJsonStart, mockJsonEnd + 1));
+        }
+      }
     } catch (parseError) {
       console.error("JSON parse error:", parseError);
       console.error("AI response:", aiResponse);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to parse AI response. Please try again.",
-        error: "JSON_PARSE_ERROR"
-      });
+      // Return mock data as fallback instead of 500 error
+      const mockResponse = generateMockTrip(destination, days, budget, travelTypeFinal, interests);
+      const mockJsonStart = mockResponse.indexOf('{');
+      const mockJsonEnd = mockResponse.lastIndexOf('}');
+      tripData = JSON.parse(mockResponse.substring(mockJsonStart, mockJsonEnd + 1));
     }
 
-    // Fetch cover image from Unsplash
-    const coverImage = await fetchUnsplashImage(destination);
+    // Fetch real destination image from Unsplash
+    let coverImage = null;
+    if (process.env.UNSPLASH_ACCESS_KEY) {
+      try {
+        const unsplashRes = await axios.get(
+          `https://api.unsplash.com/search/photos`,
+          {
+            params: {
+              query: `${destination} travel landmark`,
+              per_page: 1,
+              orientation: 'landscape'
+            },
+            headers: {
+              Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`
+            }
+          }
+        );
+        coverImage = unsplashRes.data.results[0]?.urls?.regular || null;
+      } catch (e) {
+        console.log('Unsplash fetch failed, continuing without image');
+      }
+    }
 
     // Geocode destination
     const coords = await geocodeDestination(destination);
@@ -436,39 +494,78 @@ Make all recommendations specific to the destination and budget level. Include r
 // @access  Private
 export const saveTrip = async (req, res) => {
   try {
+    const userId = req.user.id;
     const tripData = req.body;
 
-    // Validation
-    if (!tripData.destination || !tripData.title) {
+    // Validate required fields
+    if (!tripData.destination || !tripData.itinerary) {
       return res.status(400).json({
-        success: false,
-        message: "Please provide destination and title"
+        message: 'Missing required fields: destination and itinerary'
       });
     }
 
-    // Create trip
-    const trip = await Trip.create({
+    // Sanitize budget to valid enum values
+    const validBudgets = ['budget', 'moderate', 'comfort', 'luxury'];
+    const sanitizedBudget = validBudgets.includes(tripData.budget) ? tripData.budget : 'moderate';
+
+    // Sanitize travelType to valid enum values
+    const validTravelTypes = ['solo', 'couple', 'family', 'group', 'balanced', 'adventure', 'cultural', 'relaxation', 'backpacker', 'luxury', 'business'];
+    const sanitizedTravelType = validTravelTypes.includes(tripData.travelType) ? tripData.travelType : 'solo';
+
+    // Prepare trip data with proper date formatting
+    const preparedData = {
       ...tripData,
-      user: req.user.id,
-      status: tripData.status || "planning"
-    });
+      user: userId,
+      budget: sanitizedBudget,
+      travelType: sanitizedTravelType,
+      days: tripData.days || tripData.itinerary?.length || 1,
+      startDate: new Date(tripData.startDate),
+      endDate: new Date(tripData.endDate),
+      // Filter interests to only valid enum values
+      interests: (tripData.interests || [])
+        .map(i => i.toLowerCase().trim())
+        .filter(i => ['adventure', 'food', 'culture', 'history', 'nature', 'nightlife', 'shopping', 'wellness', 'photography', 'local experiences'].includes(i))
+    };
 
-    // Update user stats
-    await User.findByIdAndUpdate(req.user.id, {
-      $inc: {
-        "stats.totalTrips": 1,
-        "stats.totalTripDays": trip.days || 0
-      }
-    });
+    // Check if trip already exists (update if so)
+    let trip;
+    if (tripData._id) {
+      trip = await Trip.findOneAndUpdate(
+        { _id: tripData._id, user: userId },
+        preparedData,
+        { new: true, runValidators: false }
+      );
+    } else {
+      trip = await Trip.create(preparedData);
+    }
 
-    res.status(201).json({
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    return res.status(200).json({
       success: true,
-      message: "Trip saved successfully",
-      data: trip
+      message: 'Trip saved successfully',
+      trip
     });
   } catch (error) {
-    console.error("Save trip error:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    console.error('Save trip error:', error);
+
+    // Handle Mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({
+        message: 'Validation error',
+        errors: messages
+      });
+    }
+
+    // Handle other errors
+    return res.status(500).json({
+      message: 'Failed to save trip',
+      error: error.message,
+      details: error.stack
+    });
   }
 };
 
@@ -477,39 +574,14 @@ export const saveTrip = async (req, res) => {
 // @access  Private
 export const getUserTrips = async (req, res) => {
   try {
-    const { status, page = 1, limit = 10 } = req.query;
-    
-    const query = { 
-      user: req.user.id,
-      isDeleted: false 
-    };
-    
-    if (status) {
-      query.status = status;
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const trips = await Trip.find(query)
+    const userId = req.user.id;
+    const trips = await Trip.find({ user: userId, isDeleted: false })
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+      .select('-itinerary'); // exclude heavy itinerary for list view
 
-    const total = await Trip.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: trips,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
+    return res.json({ success: true, trips });
   } catch (error) {
-    console.error("Get user trips error:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 

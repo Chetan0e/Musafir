@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { tripAPI, storyAPI } from '../api/api.js';
 import { Button, Card, Badge, SkeletonCard } from '../components/ui/index.js';
-import { 
-  LayoutDashboard, MapPin, BookOpen, Trash2, Calendar, 
+import {
+  LayoutDashboard, MapPin, BookOpen, Trash2,
   Compass, Plus, ArrowRight, Clock, Users, Wallet,
-  Settings, LogOut, Map, Heart, TrendingUp, Sparkles
+  Settings, LogOut, Map, Heart, TrendingUp, Sparkles, Menu, X
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -19,17 +19,13 @@ export default function Dashboard() {
   const [stats, setStats] = useState({
     totalTrips: 0,
     totalStories: 0,
-    totalDestinations: 0,
-    upcomingTrips: 0
+    totalDestinations: 0
   });
   const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  useEffect(() => {
-    fetchUserData();
-  }, [isAuthenticated, user?._id]);
-
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     // Only fetch if authenticated
     if (!isAuthenticated || !user?._id) {
       setDataLoaded(true);
@@ -43,11 +39,9 @@ export default function Dashboard() {
         storyAPI.getMyStories()
       ]);
 
-      const tripsData = tripsRes.data.data || [];
-      const storiesData = storiesRes.data.data || [];
-
-      console.log('Dashboard - fetched stories:', storiesData.length, storiesData);
-      console.log('Dashboard - current user:', user?._id);
+      // Handle both data.data and data.trips response structures
+      const tripsData = tripsRes.data.trips || tripsRes.data.data || [];
+      const storiesData = storiesRes.data.stories || storiesRes.data.data || [];
 
       setTrips(tripsData);
       setStories(storiesData);
@@ -63,14 +57,35 @@ export default function Dashboard() {
       });
     } catch (error) {
       console.error('Error fetching user data:', error);
-      // Set empty data on error so UI still renders
       setTrips([]);
       setStories([]);
     } finally {
       setLoading(false);
       setDataLoaded(true);
     }
-  };
+  }, [isAuthenticated, user?._id]);
+
+  useEffect(() => {
+    fetchUserData();
+  }, [isAuthenticated, user?._id]);
+
+  // Refresh data when dashboard becomes visible or window gains focus
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUserData();
+      }
+    };
+    const handleFocus = () => {
+      fetchUserData();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchUserData]);
 
   const handleDeleteTrip = async (tripId) => {
     if (!confirm('Are you sure you want to delete this trip?')) return;
@@ -125,8 +140,21 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       <div className="flex">
+        {/* Mobile Menu Button */}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-surface border border-border rounded-lg"
+        >
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+
         {/* Sidebar */}
-        <aside className="w-64 bg-surface border-r border-border min-h-screen sticky top-0">
+        <aside className={`
+          fixed lg:static inset-y-0 left-0 z-40
+          w-64 bg-surface border-r border-border min-h-screen
+          transform transition-transform duration-300 ease-in-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}>
           <div className="p-6">
             <Link to="/" className="flex items-center space-x-3 mb-8">
               <div className="w-10 h-10 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center">
@@ -149,11 +177,12 @@ export default function Dashboard() {
                       } else {
                         setActiveTab(item.id);
                       }
+                      setSidebarOpen(false);
                     }}
                     className={`
                       w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors
-                      ${activeTab === item.id 
-                        ? 'bg-accent/10 text-accent' 
+                      ${activeTab === item.id
+                        ? 'bg-accent/10 text-accent'
                         : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'}
                     `}
                   >
@@ -166,7 +195,10 @@ export default function Dashboard() {
 
             <div className="mt-8 pt-8 border-t border-border">
               <button
-                onClick={handleLogout}
+                onClick={() => {
+                  handleLogout();
+                  setSidebarOpen(false);
+                }}
                 className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left text-danger hover:bg-danger/10 transition-colors"
               >
                 <LogOut className="w-5 h-5" />
@@ -176,16 +208,24 @@ export default function Dashboard() {
           </div>
         </aside>
 
+        {/* Overlay for mobile */}
+        {sidebarOpen && (
+          <div
+            className="lg:hidden fixed inset-0 bg-black/50 z-30"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Main Content */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 lg:p-8 lg:ml-0">
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between mb-8"
+            className="flex items-center justify-between mb-8 mt-12 lg:mt-0"
           >
             <div>
-              <h1 className="font-display text-3xl font-semibold text-text-primary">
+              <h1 className="font-display text-2xl lg:text-3xl font-semibold text-text-primary">
                 Welcome back, <span className="italic text-accent">{user?.name?.split(' ')[0]}</span>
               </h1>
               <p className="text-text-secondary mt-1">
@@ -207,12 +247,11 @@ export default function Dashboard() {
               className="space-y-8"
             >
               {/* Stats Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   { icon: MapPin, label: 'Total Trips', value: stats.totalTrips, color: 'accent' },
                   { icon: Map, label: 'Destinations', value: stats.totalDestinations, color: 'success' },
                   { icon: BookOpen, label: 'Stories', value: stats.totalStories, color: 'info' },
-                  { icon: Calendar, label: 'Upcoming', value: stats.upcomingTrips, color: 'warning' },
                 ].map((stat, index) => {
                   const Icon = stat.icon;
                   return (
@@ -274,7 +313,7 @@ export default function Dashboard() {
                                 <div>
                                   <h3 className="font-medium text-text-primary">{trip.destination}</h3>
                                   <p className="text-sm text-text-secondary">
-                                    {trip.duration} days • {trip.budget} budget
+                                    {trip.days || trip.duration} days • {trip.budget} budget
                                   </p>
                                 </div>
                               </div>
@@ -362,7 +401,7 @@ export default function Dashboard() {
                           <h3 className="font-semibold text-text-primary text-lg">{trip.destination}</h3>
                           <div className="flex items-center gap-4 mt-2 text-sm text-text-secondary">
                             <span className="flex items-center gap-1">
-                              <Clock className="w-4 h-4" /> {trip.duration} days
+                              <Clock className="w-4 h-4" /> {trip.days || trip.duration} days
                             </span>
                             <span className="flex items-center gap-1">
                               <Users className="w-4 h-4" /> {trip.travelers} travelers

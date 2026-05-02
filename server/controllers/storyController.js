@@ -1,5 +1,6 @@
 import Story from "../models/Story.js";
 import User from "../models/User.js";
+import axios from "axios";
 
 // @desc    Create new story
 // @route   POST /api/stories
@@ -7,51 +8,55 @@ import User from "../models/User.js";
 export const createStory = async (req, res) => {
   try {
     const { title, location, destination, content, images, tags, trip } = req.body;
+    const userId = req.user.id;
 
     if (!title || !location || !content) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Please provide title, location, and content" 
+      return res.status(400).json({
+        success: false,
+        message: "Please provide title, location, and content"
       });
     }
 
-    // Handle uploaded file
-    let coverImage = null;
+    // Handle image: convert to base64 if file uploaded, or use URL
+    let imageData = null;
     if (req.file) {
-      coverImage = `/uploads/stories/${req.file.filename}`;
+      // Convert uploaded file to base64 data URL
+      const base64 = req.file.buffer.toString('base64');
+      imageData = `data:${req.file.mimetype};base64,${base64}`;
     }
 
-    const storyData = {
-      user: req.user.id,
-      title: title.trim(),
-      location: location.trim(),
-      destination: destination?.trim() || location.trim(),
-      content: content.trim(),
-      coverImage: coverImage,
-      images: images || [],
-      tags: tags || [],
-      trip: trip || null,
-      isPublished: true
-    };
+    // Fetch Unsplash image for destination as fallback cover
+    let coverImage = null;
+    if (process.env.UNSPLASH_ACCESS_KEY) {
+      try {
+        const unsplashRes = await axios.get('https://api.unsplash.com/search/photos', {
+          params: { query: destination || location, per_page: 1, orientation: 'landscape' },
+          headers: { Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}` }
+        });
+        coverImage = unsplashRes.data.results[0]?.urls?.regular || null;
+      } catch(e) { /* continue without */ }
+    }
 
-    const story = await Story.create(storyData);
-
-    // Populate user info
-    await story.populate("user", "name avatar");
-
-    // Update user stats
-    await User.findByIdAndUpdate(req.user.id, {
-      $inc: { "stats.storiesWritten": 1 }
+    const story = new Story({
+      author: userId,
+      title,
+      content,
+      destination: destination || location,
+      location,
+      image: imageData,       // base64 or null
+      coverImage: coverImage, // Unsplash URL fallback
+      tags: tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [],
     });
 
-    res.status(201).json({
-      success: true,
-      message: "Story created successfully",
-      data: story
-    });
+    await story.save();
+
+    // Populate author details before returning
+    await story.populate('author', 'name email');
+
+    return res.status(201).json({ success: true, story });
   } catch (error) {
-    console.error("Create story error:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    console.error('Create story error:', error);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -60,44 +65,25 @@ export const createStory = async (req, res) => {
 // @access  Public
 export const getAllStories = async (req, res) => {
   try {
-    const { page = 1, limit = 10, destination, tag } = req.query;
+    const { search, page = 1, limit = 12 } = req.query;
 
-    const query = { 
-      isPublished: true,
-      isDeleted: false 
-    };
-
-    if (destination) {
-      query.destination = { $regex: destination, $options: "i" };
+    let query = { isPublic: true, isDeleted: false };
+    if (search) {
+      query.$or = [
+        { destination: { $regex: search, $options: 'i' } },
+        { title: { $regex: search, $options: 'i' } }
+      ];
     }
-
-    if (tag) {
-      query.tags = { $in: [tag] };
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const stories = await Story.find(query)
-      .populate("user", "_id name avatar")
+      .populate('author', 'name email')
       .sort({ createdAt: -1 })
-      .skip(skip)
+      .skip((page - 1) * limit)
       .limit(parseInt(limit));
 
-    const total = await Story.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: stories,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
+    return res.json({ success: true, stories });
   } catch (error) {
-    console.error("Get all stories error:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -133,70 +119,49 @@ export const getStoryById = async (req, res) => {
 // @access  Private
 export const getMyStories = async (req, res) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
-    
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const userId = req.user.id;
 
-    const stories = await Story.find({ 
-      user: req.user.id,
-      isDeleted: false 
-    })
-      .populate("user", "_id name avatar")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    const stories = await Story.find({ author: userId, isDeleted: false })
+      .populate('author', 'name email')
+      .sort({ createdAt: -1 });
 
-    const total = await Story.countDocuments({ 
-      user: req.user.id,
-      isDeleted: false 
-    });
-
-    res.json({
-      success: true,
-      data: stories,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
+    return res.json({ success: true, stories });
   } catch (error) {
-    console.error("Get my stories error:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
-// @desc    Like/unlike story
+// @desc    Toggle like on a story
 // @route   POST /api/stories/:id/like
 // @access  Private
-export const likeStory = async (req, res) => {
+export const toggleLike = async (req, res) => {
   try {
+    const userId = req.user.id;
     const story = await Story.findById(req.params.id);
 
     if (!story) {
-      return res.status(404).json({ success: false, message: "Story not found" });
+      return res.status(404).json({ message: 'Story not found' });
     }
 
-    const userId = req.user.id;
-    const hasLiked = story.likes.includes(userId);
+    const isLiked = story.likes.some(id => id.toString() === userId.toString());
 
-    if (hasLiked) {
-      await story.removeLike(userId);
+    if (isLiked) {
+      story.likes = story.likes.filter(id => id.toString() !== userId.toString());
     } else {
-      await story.addLike(userId);
+      story.likes.push(userId);
     }
 
-    res.json({
+    await story.save();
+
+    return res.json({
       success: true,
-      data: { 
-        likesCount: story.likesCount,
-        hasLiked: !hasLiked
-      }
+      liked: !isLiked,
+      likeCount: story.likes.length,
+      likes: story.likes
     });
   } catch (error) {
-    console.error("Like story error:", error);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    console.error('Toggle like error:', error);
+    return res.status(500).json({ message: error.message });
   }
 };
 
